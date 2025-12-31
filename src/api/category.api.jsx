@@ -1,28 +1,24 @@
 import { apiClient } from "./client";
 
 export async function fetchCategoriesApi() {
-  const res = await apiClient("/api/category");
+  const res = await apiClient("/api/category/"); // Added trailing slash to be safe
   if (!res.ok) throw new Error("Failed to fetch categories");
 
   const json = await res.json();
-  // console.log("Raw API Response:", json);
 
-  // FIX 1: specific check for your current structure [{ data: [...] }, 200]
   if (Array.isArray(json) && json[0] && json[0].data) {
     return json[0].data;
   }
   
-  // FIX 2: standard check if response is just { data: [...] }
   if (json.data && Array.isArray(json.data)) {
     return json.data;
   }
 
-  // Fallback: assume it's already the array
   return json;
 }
 
 export async function createCategoryApi(data) {
-  const res = await apiClient("/api/category", {
+  const res = await apiClient("/api/category/", { // Added trailing slash
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -31,9 +27,32 @@ export async function createCategoryApi(data) {
   
   const json = await res.json();
   
-  // Apply the same fix here if create returns wrapped data
   if (Array.isArray(json) && json[0] && json[0].data) return json[0].data;
   if (json.data) return json.data;
   
   return json;
+}
+
+// --- FIXED CRUD OPERATIONS ---
+
+export async function updateCategoryApi(id, data) {
+  // ✅ FIX: Use Query Param (?category_id=...) instead of Path Param (/${id})
+  const res = await apiClient(`/api/category/?category_id=${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  
+  if (!res.ok) throw new Error("Failed to update category");
+  return res.json();
+}
+
+export async function deleteCategoryApi(id) {
+  // ✅ FIX: Use Query Param here too
+  const res = await apiClient(`/api/category/?category_id=${id}`, {
+    method: "DELETE",
+  });
+  
+  if (!res.ok) throw new Error("Failed to delete category");
+  return res.json();
 }

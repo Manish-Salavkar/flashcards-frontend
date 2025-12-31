@@ -1,9 +1,7 @@
 // flashcards/src/context/providers.jsx
 import React, { createContext, useState, useEffect } from 'react';
-
-// ✅ FIX: Imported registerRequest here
 import { loginRequest, registerRequest } from '../api/auth.api'; 
-import { fetchCategoriesApi, createCategoryApi } from '../api/category.api';
+import { fetchCategoriesApi, createCategoryApi, updateCategoryApi, deleteCategoryApi } from '../api/category.api';
 import { 
   fetchFlashcardsApi, 
   createFlashcardApi, 
@@ -31,7 +29,6 @@ export const AppProviders = ({ children }) => {
   // --- 2. AUTH LOGIC ---
   const [token, setToken] = useState(localStorage.getItem('token'));
   
-  // Simple check: if token exists, we assume user is logged in
   const user = token ? { type: 'user' } : null; 
 
   const login = async (email, password) => {
@@ -84,9 +81,8 @@ export const AppProviders = ({ children }) => {
 
   // --- ACTIONS ---
 
-  const addCategory = async (name, parentId) => {
+const addCategory = async (name, parentId) => {
     const payload = { name, parent_id: parentId };
-
     if (token) {
       const newCat = await createCategoryApi(payload);
       setCategories(prev => [...prev, newCat]);
@@ -98,8 +94,65 @@ export const AppProviders = ({ children }) => {
     }
   };
 
+  // --- NEW: UPDATE CATEGORY ---
+  const updateCategory = async (id, name, parentId) => {
+    const target = categories.find(c => c.id === id);
+    if (target && target.name.toLowerCase() === 'general') {
+      alert("The 'General' category cannot be modified.");
+      return;
+    }
+
+    const payload = { name, parent_id: parentId };
+
+    if (token) {
+      await updateCategoryApi(id, payload);
+      setCategories(prev => prev.map(c => c.id === id ? { ...c, ...payload } : c));
+    } else {
+      const updated = categories.map(c => c.id === id ? { ...c, name, parentId } : c);
+      setCategories(updated);
+      localStorage.setItem('guest_categories', JSON.stringify(updated));
+    }
+  };
+
+  // --- NEW: DELETE CATEGORY ---
+const deleteCategory = async (id) => {
+    const target = categories.find(c => c.id === id);
+    if (target && target.name.toLowerCase() === 'general') {
+      alert("The 'General' category cannot be deleted.");
+      return;
+    }
+
+    const getIdsToDelete = (parentId) => {
+      const children = categories.filter(c => (c.parent_id || c.parentId) == parentId);
+      let ids = [parentId];
+      children.forEach(child => {
+        ids = [...ids, ...getIdsToDelete(child.id)];
+      });
+      return ids;
+    };
+
+    const idsToRemove = getIdsToDelete(id);
+
+    if (token) {
+      await deleteCategoryApi(id);
+      
+      setCategories(prev => prev.filter(c => !idsToRemove.includes(c.id)));
+      
+      setFlashcards(prev => prev.filter(f => !idsToRemove.includes(f.category_id || f.categoryId)));
+      
+    } else {
+      const updatedCats = categories.filter(c => !idsToRemove.includes(c.id));
+      const updatedCards = flashcards.filter(f => !idsToRemove.includes(f.category_id || f.categoryId));
+      
+      setCategories(updatedCats);
+      setFlashcards(updatedCards);
+      
+      localStorage.setItem('guest_categories', JSON.stringify(updatedCats));
+      localStorage.setItem('guest_flashcards', JSON.stringify(updatedCards));
+    }
+  };
+
   const addFlashcard = async (question, answer, categoryId) => {
-    // FIX: Ensure categoryId is an Integer
     const payload = { 
       question, 
       answer, 
@@ -130,7 +183,6 @@ export const AppProviders = ({ children }) => {
       await updateFlashcardApi(id, payload);
       setFlashcards(prev => prev.map(f => f.id === id ? { ...f, ...payload } : f));
     } else {
-      // Guest Mode (Uses camelCase categoryId)
       const updated = flashcards.map(f => f.id === id ? { ...f, ...payload, categoryId } : f);
       setFlashcards(updated);
       localStorage.setItem('guest_flashcards', JSON.stringify(updated));
@@ -159,13 +211,13 @@ export const AppProviders = ({ children }) => {
     }
   };
 
-  return (
+return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <AuthContext.Provider value={{ user, token, login, logout, register }}>
         <DataContext.Provider value={{ 
             categories, flashcards, loading,
-            addCategory, addFlashcard, 
-            updateFlashcard, deleteFlashcard, bulkDeleteFlashcards 
+            addCategory, updateCategory, deleteCategory,
+            addFlashcard, updateFlashcard, deleteFlashcard, bulkDeleteFlashcards 
         }}>
           {children}
         </DataContext.Provider>
